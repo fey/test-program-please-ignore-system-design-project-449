@@ -1,0 +1,20 @@
+{
+  "name": "notification-sink",
+  "config": {
+    "connector.class": "io.debezium.connector.jdbc.JdbcSinkConnector",
+    "connection.url": "jdbc:postgresql://db:5432/taxi",
+    "connection.username": "postgres",
+    "topics": "events.trip",
+    "collection.name.format": "notify_inbox",
+    "insert.mode": "upsert",
+    "primary.key.mode": "record_value",
+    "primary.key.fields": "eventId",
+    "schema.evolution": "basic",
+    "key.converter": "org.apache.kafka.connect.storage.StringConverter",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter.schemas.enable": "true",
+    "transforms": "meta",
+    "transforms.meta.type": "org.apache.kafka.connect.transforms.InsertField$Value",
+    "transforms.meta.timestamp.field": "kafka_timestamp"
+  }
+}

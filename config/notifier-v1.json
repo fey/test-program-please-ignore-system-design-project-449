@@ -1,0 +1,9 @@
+{
+  "version": "v1",
+  "template": "Заказ {tripId} принят",
+  "timeoutMs": 700,
+  "retryDelayMs": 500,
+  "leaseMs": 3000,
+  "maxAttemptsPerSecond": 80,
+  "maxRetryAgeMs": 82800000
+}

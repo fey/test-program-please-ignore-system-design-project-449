@@ -1,0 +1,21 @@
+{
+  "name": "projection-rebuild",
+  "config": {
+    "connector.class": "io.debezium.connector.jdbc.JdbcSinkConnector",
+    "connection.url": "jdbc:postgresql://db:5432/taxi",
+    "connection.username": "postgres",
+    "topics": "events.trip",
+    "collection.name.format": "trip_facts_v2",
+    "insert.mode": "insert",
+    "primary.key.mode": "none",
+    "schema.evolution": "basic",
+    "key.converter": "org.apache.kafka.connect.storage.StringConverter",
+    "value.converter": "org.apache.kafka.connect.json.JsonConverter",
+    "value.converter.schemas.enable": "true",
+    "transforms": "meta",
+    "transforms.meta.type": "org.apache.kafka.connect.transforms.InsertField$Value",
+    "transforms.meta.timestamp.field": "kafka_timestamp",
+    "transforms.meta.partition.field": "kafka_partition",
+    "transforms.meta.offset.field": "kafka_offset"
+  }
+}

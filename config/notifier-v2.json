@@ -1,0 +1,9 @@
+{
+  "version": "v2",
+  "template": "Такси ищет водителя для заказа {tripId}",
+  "timeoutMs": 700,
+  "retryDelayMs": 500,
+  "leaseMs": 3000,
+  "maxAttemptsPerSecond": 80,
+  "maxRetryAgeMs": 82800000
+}

@@ -1,0 +1,123 @@
+# Каталог решения задаётся через APP_CONTEXT. У студента решение лежит рядом,
+# у проверки оно находится в code/.
+services:
+  db:
+    image: postgres:18-alpine
+    # Debezium читает журнал базы через логическое декодирование.
+    command: postgres -c wal_level=logical
+    environment:
+      POSTGRES_DB: taxi
+      POSTGRES_HOST_AUTH_METHOD: trust
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d taxi"]
+      interval: 2s
+      timeout: 2s
+      retries: 40
+
+  kafka:
+    image: apache/kafka:4.2.0
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      # Топики создаёт только Kafka Connect по настройкам коннектора. Иначе
+      # приёмник, подписавшийся раньше, получит топик с числом партиций брокера.
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_HEAP_OPTS: -Xms256m -Xmx512m
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+
+  connect:
+    image: quay.io/debezium/connect:3.7.0.Final
+    depends_on:
+      db:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment:
+      BOOTSTRAP_SERVERS: kafka:9092
+      GROUP_ID: connect
+      CONFIG_STORAGE_TOPIC: _connect_configs
+      OFFSET_STORAGE_TOPIC: _connect_offsets
+      STATUS_STORAGE_TOPIC: _connect_status
+      CONFIG_STORAGE_REPLICATION_FACTOR: 1
+      OFFSET_STORAGE_REPLICATION_FACTOR: 1
+      STATUS_STORAGE_REPLICATION_FACTOR: 1
+      HEAP_OPTS: -Xms256m -Xmx512m
+      # Приёмники сохраняют позицию в группе раз в 5 секунд. По умолчанию это
+      # раз в минуту, и make lag всё это время показывал бы прочерки. Образ
+      # Debezium сам задаёт OFFSET_FLUSH_INTERVAL_MS, и эта переменная перебивает
+      # CONNECT_OFFSET_FLUSH_INTERVAL_MS, поэтому имя здесь именно такое.
+      OFFSET_FLUSH_INTERVAL_MS: 5000
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8083/connectors >/dev/null"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+      start_period: 10s
+
+  app:
+    build:
+      context: ${APP_CONTEXT:-.}
+    volumes:
+      - ${APP_CONTEXT:-.}:/app
+    command: make start
+    environment:
+      PORT: 8080
+      PROVIDER_URL: http://provider:8081
+      DATABASE_URL: postgres://postgres@db:5432/taxi
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  provider:
+    build:
+      context: ${APP_CONTEXT:-.}
+    volumes:
+      - ${APP_CONTEXT:-.}:/app
+    command: node src/provider.ts
+    environment:
+      DATABASE_URL: postgres://postgres@db:5432/taxi
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8081/health >/dev/null"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  notifier:
+    build:
+      context: ${APP_CONTEXT:-.}
+    volumes:
+      - ${APP_CONTEXT:-.}:/app
+    command: node src/notifier.ts
+    environment:
+      DATABASE_URL: postgres://postgres@db:5432/taxi
+      PROVIDER_URL: http://provider:8081
+      NOTIFIER_POLICY: ${NOTIFIER_POLICY:-config/notifier.json}
+    depends_on:
+      provider:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8082/health >/dev/null"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
